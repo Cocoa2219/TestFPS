@@ -1,5 +1,6 @@
 ﻿using System;
 using Exiled.API.Features;
+using Map = Exiled.Events.Handlers.Map;
 using Player = Exiled.Events.Handlers.Player;
 using Server = Exiled.Events.Handlers.Server;
 
@@ -28,7 +29,13 @@ namespace TestFPS
         {
             Server.RoundStarted += _eventHandler.OnRoundStarted;
             Server.RestartingRound += _eventHandler.OnServerRestarting;
+            Map.Generated += _eventHandler.OnMapGenerated;
             Player.ChangingItem += _eventHandler.OnChangingItem;
+            Player.PickingUpItem += _eventHandler.OnPickingUpItem;
+            Player.DroppingItem += _eventHandler.OnDroppingItem;
+            Player.Dying += _eventHandler.OnDying;
+            Player.Died += _eventHandler.OnDied;
+            Player.ChangingRole += _eventHandler.OnChangingRole;
         }
 
         public override void OnDisabled()
@@ -43,7 +50,13 @@ namespace TestFPS
         {
             Server.RoundStarted -= _eventHandler.OnRoundStarted;
             Server.RestartingRound -= _eventHandler.OnServerRestarting;
+            Map.Generated -= _eventHandler.OnMapGenerated;
             Player.ChangingItem -= _eventHandler.OnChangingItem;
+            Player.PickingUpItem -= _eventHandler.OnPickingUpItem;
+            Player.DroppingItem -= _eventHandler.OnDroppingItem;
+            Player.Dying -= _eventHandler.OnDying;
+            Player.Died -= _eventHandler.OnDied;
+            Player.ChangingRole -= _eventHandler.OnChangingRole;
         }
     }
 }
