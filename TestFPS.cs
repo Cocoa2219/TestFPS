@@ -36,6 +36,10 @@ namespace TestFPS
             Player.Dying += _eventHandler.OnDying;
             Player.Died += _eventHandler.OnDied;
             Player.ChangingRole += _eventHandler.OnChangingRole;
+            Server.RespawningTeam += _eventHandler.OnRespawningTeam;
+            Player.UsingRadioBattery += _eventHandler.OnUsingRadioBattery;
+            Player.ChangingRole += _eventHandler.OnChangingRole;
+            Player.Left += _eventHandler.OnPlayerLeft;
         }
 
         public override void OnDisabled()
@@ -57,6 +61,10 @@ namespace TestFPS
             Player.Dying -= _eventHandler.OnDying;
             Player.Died -= _eventHandler.OnDied;
             Player.ChangingRole -= _eventHandler.OnChangingRole;
+            Server.RespawningTeam -= _eventHandler.OnRespawningTeam;
+            Player.UsingRadioBattery -= _eventHandler.OnUsingRadioBattery;
+            Player.ChangingRole -= _eventHandler.OnChangingRole;
+            Player.Left -= _eventHandler.OnPlayerLeft;
         }
     }
 }

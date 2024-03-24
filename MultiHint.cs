@@ -27,7 +27,7 @@ public class MultiHint
                 writtenText += "\n";
             }
 
-        writtenText += "<size=350>\n\n";
+        writtenText += "<size=300>\n\n";
 
         playerHint[playerId].Add(text);
         player.ShowHint(writtenText, 120);

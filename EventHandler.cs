@@ -2,15 +2,19 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using CustomPlayerEffects;
 using Exiled.API.Enums;
 using Exiled.API.Features;
+using Exiled.API.Features.DamageHandlers;
 using Exiled.API.Features.Pickups;
 using Exiled.Events.EventArgs.Player;
+using Exiled.Events.EventArgs.Server;
 using MEC;
 using PlayerRoles;
+using PlayerStatsSystem;
 using UnityEngine;
-using UserSettings.OtherSettings;
 using Exception = System.Exception;
+using FirearmDamageHandler = PlayerStatsSystem.FirearmDamageHandler;
 using Random = UnityEngine.Random;
 
 namespace TestFPS;
@@ -23,7 +27,7 @@ public class EventHandler
 
     private readonly HashSet<Player> pingCooldown = [];
 
-    private Room room;
+    // private Room room;
 
     private readonly Dictionary<ZoneType, RoomType[]> _takeoverPointSpawns = new()
     {
@@ -65,8 +69,8 @@ public class EventHandler
         }
     };
 
-    public HashSet<Player> _teamA;
-    public HashSet<Player> _teamB;
+    public HashSet<Player> _teamA = [];
+    public HashSet<Player> _teamB = [];
 
     private HashSet<Player> _teamAPointedPlayers = [];
     private HashSet<Player> _teamBPointedPlayers = [];
@@ -79,6 +83,17 @@ public class EventHandler
 
     private int _isOccupyed;
     private int _isSteal;
+
+    private int _teamAPoint;
+    private int _teamBPoint;
+
+    private bool _roundEnded;
+
+    private byte _1853EffectCount = 0;
+
+    private string _show1853EffectMessage;
+
+    private Dictionary<Player, Player> _revengeList = new();
 
     private Color MixColors(Color color1, Color color2, float ratio)
     {
@@ -110,9 +125,9 @@ public class EventHandler
 
     public void OnMapGenerated()
     {
-        room = PickRandomRoom(ZoneType.LightContainment);
+        // room = PickRandomRoom(ZoneType.LightContainment);
 
-        room.Color = new Color32(132, 191, 133, 25);
+        // room.Color = new Color32(132, 191, 133, 25);
     }
 
     private Room PickRandomRoom(ZoneType type)
@@ -140,15 +155,15 @@ public class EventHandler
         yield return Timing.WaitForSeconds(0.1f);
         Round.IsLocked = true;
 
-        _timer = 300;
+        _timer = 360;
 
         foreach (var player in Player.List)
         {
             player.Role.Set(RoleTypeId.Spectator, SpawnReason.None, RoleSpawnFlags.All);
-            player.Broadcast(10, "<size=35><b>MTF-E11-SR 부착물을 설정해 주세요.</b></size>");
+            player.Broadcast(10, "<size=35><b>부착물을 설정해 주세요.</b></size>");
         }
 
-        yield return Timing.WaitForSeconds(1f);
+        yield return Timing.WaitForSeconds(10f);
 
         Pickup.List.ToList().ForEach(x => x.Destroy());
 
@@ -168,12 +183,12 @@ public class EventHandler
 
         yield return Timing.WaitForSeconds(5f);
 
-        Map.Broadcast(3, "<size=35><b>포인트 A와 B를 점령하세요!</b></size>", Broadcast.BroadcastFlags.Normal, true);
+        Map.Broadcast(3, "<size=35><b>데스매치에 준비하세요...</b></size>", Broadcast.BroadcastFlags.Normal, true);
 
         yield return Timing.WaitForSeconds(3f);
 
         var spawnableRooms = Room.List.Where(x =>
-            _playerSpawnRooms[ZoneType.LightContainment].Contains(x.Type) && x != room).ToList();
+            _playerSpawnRooms[ZoneType.Entrance].Contains(x.Type)).ToList();
 
         foreach (var aPlayer in _teamA)
         {
@@ -193,13 +208,19 @@ public class EventHandler
 
         foreach (var player in Player.List)
         {
-            player.AddItem(ItemType.GunE11SR);
+            player.AddItem(GetRandomGun());
+            player.AddItem(GetRandomGun());
+            player.AddItem(ItemType.KeycardO5);
             player.AddItem(ItemType.Medkit);
             player.AddItem(ItemType.ArmorCombat);
             player.AddItem(ItemType.Radio);
-            player.AddItem(ItemType.KeycardO5);
-            player.AddAmmo(AmmoType.Nato556, 5000);
+            player.AddAmmo(AmmoType.Ammo44Cal, 120);
+            player.AddAmmo(AmmoType.Nato556, 120);
+            player.AddAmmo(AmmoType.Nato762, 120);
+            player.AddAmmo(AmmoType.Nato9, 120);
+            player.SetAmmo(AmmoType.Ammo12Gauge, 54);
         }
+
         Timing.RunCoroutine(BroadcastGameStat());
         Timing.RunCoroutine(Timer(_timer));
         Player.List.ToList().ForEach(x => x.IsGodModeEnabled = true);
@@ -291,16 +312,75 @@ public class EventHandler
     {
         _timer = time;
 
-        while (_timer > 0 && !Round.IsEnded)
+        while (!Round.IsEnded)
         {
             _timer--;
+
+            switch (_timer)
+            {
+                case 180:
+                    Player.List.ToList().ForEach(x => x.SyncEffect(new Effect(EffectType.Scp1853, 0, 1, false, true)));
+                    _1853EffectCount = 1;
+                    _show1853EffectMessage = "<b><size=30>💊 SCP - 1853 (x1)</size></b>";
+                    break;
+                case 175:
+                    _show1853EffectMessage = string.Empty;
+                    break;
+                case 120:
+                    Player.List.ToList().ForEach(x => x.SyncEffect(new Effect(EffectType.Scp1853, 0, 2, false, true)));
+                    _1853EffectCount = 2;
+                    _show1853EffectMessage = "<b><size=30>💊 SCP - 1853 (x2)</size></b>";
+                    break;
+                case 115:
+                    _show1853EffectMessage = string.Empty;
+                    break;
+                case 60:
+                    Player.List.ToList().ForEach(x => x.SyncEffect(new Effect(EffectType.Scp1853, 0, 3, false, true)));
+                    _1853EffectCount = 3;
+                    _show1853EffectMessage = "<b><size=30>💊 SCP - 1853 (x3)</size></b>";
+                    break;
+                case 55:
+                    _show1853EffectMessage = string.Empty;
+                    break;
+            }
+
+            if (_timer <= 0)
+            {
+                _roundEnded = true;
+                break;
+            }
             yield return Timing.WaitForSeconds(1f);
+        }
+
+        Player.List.ToList().ForEach(p =>
+        {
+            p.ClearInventory();
+            p.Role.Set(RoleTypeId.Spectator, SpawnReason.ForceClass, RoleSpawnFlags.All);
+        });
+
+        yield return Timing.WaitForSeconds(1f);
+
+        Map.Broadcast(10, "<size=35><b>게임이 종료되었습니다!\n과연 승자는 누구일까요...</b></size>", Broadcast.BroadcastFlags.Normal, true);
+
+        yield return Timing.WaitForSeconds(3f);
+
+        if (_teamAPoint > _teamBPoint)
+        {
+            Map.Broadcast(10, "<size=35><b>Class-D 팀이 승리했습니다!\n<size=15>와아아아ㅏㅏㅏ</size></b></size>", Broadcast.BroadcastFlags.Normal, true);
+        }
+        else if (_teamAPoint < _teamBPoint)
+        {
+            Map.Broadcast(10, "<size=35><b>Nine-Tailed-Fox 팀이 승리했습니다!\n<size=15>와아아아ㅏㅏㅏ</size></b></size>", Broadcast.BroadcastFlags.Normal, true);
+        }
+        else
+        {
+            Map.Broadcast(10, "<size=35><b>안타깝지만... 무승부입니다!</b></size>", Broadcast.BroadcastFlags.Normal, true);
         }
     }
 
     private IEnumerator<float> BroadcastGameStat()
     {
-        while (!Round.IsEnded)
+        while (!_roundEnded)
         {
             Player.List.ToList().ForEach(player =>
             {
@@ -308,151 +388,151 @@ public class EventHandler
                 if (degree < 0)
                     degree += 360;
 
-                var text = player.IsAlive ? FormatCompass(degree, player) + "\n" : "";
+                var text = player.IsAlive ? FormatCompass(degree, player) + "<line-height=115%>\n</line-height>" : "";
 
                 text += FormatGameStats(player);
 
                 player.Broadcast(1, text, Broadcast.BroadcastFlags.Normal, true);
             });
 
-            CheckRoom();
+            // CheckRoom();
 
             yield return Timing.WaitForSeconds(0.01f);
         }
     }
 
-    private void CheckRoom()
-    {
-        try
-        {
-            foreach (var player in Player.List)
-            {
-                if (!player.IsAlive)
-                {
-                    _teamAPointedPlayers.Remove(player);
-                    _teamBPointedPlayers.Remove(player);
-                    continue;
-                }
-
-                if (Vector3.Distance(player.Position, room.Position) > 10f)
-                {
-                    _teamAPointedPlayers.Remove(player);
-                    _teamBPointedPlayers.Remove(player);
-                    continue;
-                }
-
-                if (player.CurrentRoom != room)
-                {
-                    _teamAPointedPlayers.Remove(player);
-                    _teamBPointedPlayers.Remove(player);
-                    continue;
-                }
-
-                if (_teamA.Contains(player))
-                {
-                    _teamAPointedPlayers.Add(player);
-                }
-
-                if (_teamB.Contains(player))
-                {
-                    _teamBPointedPlayers.Add(player);
-                }
-
-                if (_teamAPointedPlayers.Count > 0 && _teamBPointedPlayers.Count > 0)
-                {
-                    Log.Debug($"{player.Nickname} : Both teams are in the room.");
-                    continue;
-                }
-
-                if (_teamA.Contains(player) && _pointScore < 100)
-                {
-                    Log.Debug($"{player.Nickname} : Team A is in the room.");
-                    if (_isOccupyed == -1)
-                    {
-                        _isSteal = 1;
-                        _pointScore += 0.1f;
-                    }
-                    else
-                    {
-                        _pointScore += 0.1f;
-                        _isOccupyed = 0;
-                        _isSteal = 0;
-                    }
-                }
-                else if (_teamB.Contains(player) && _pointScore > -100)
-                {
-                    Log.Debug($"{player.Nickname} : Team B is in the room.");
-                    if (_isOccupyed == 1)
-                    {
-                        _isSteal = -1;
-                        _pointScore -= 0.1f;
-                    }
-                    else
-                    {
-                        _pointScore -= 0.1f;
-                        _isOccupyed = 0;
-                        _isSteal = 0;
-                    }
-                }
-            }
-
-            switch (_pointScore)
-            {
-                case > 100:
-                    _showCompleted = true;
-                    _isOccupyed = 1;
-                    _pointScore = 100;
-                    Timing.CallDelayed(3f, () =>
-                    {
-                        _showCompleted = false;
-                    });
-                    break;
-                case < -100:
-                    _showCompleted = true;
-                    _isOccupyed = -1;
-                    _pointScore = -100;
-                    Timing.CallDelayed(3f, () =>
-                    {
-                        _showCompleted = false;
-                    });
-                    break;
-            }
-
-            if (_teamAPointedPlayers.Count == 0 && _pointScore is > 0 and < 100 && _isOccupyed != -1 && _isSteal != -1)
-            {
-                _pointScore -= 0.2f;
-                if (_pointScore < 0)
-                {
-                    _pointScore = 0;
-                }
-            }
-
-            if (_teamBPointedPlayers.Count == 0 && _pointScore is < 0 and > -100 && _isOccupyed != 1 && _isSteal != 1)
-            {
-                _pointScore += 0.2f;
-                if (_pointScore > 0)
-                {
-                    _pointScore = 0;
-                }
-            }
-
-            room.Color = _pointScore switch
-            {
-                > 0 => MixColors(new Color32(132, 191, 133, 25), new Color32(239, 121, 4, 25), _pointScore / 100),
-                < 0 => MixColors(new Color32(132, 191, 133, 25), new Color32(7, 143, 243, 25), -_pointScore / 100),
-                _ => new Color32(132, 191, 133, 25)
-            };
-
-            if (_pointScore == 0)
-            {
-                _isOccupyed = 0;
-            }
-        }
-        catch (Exception e)
-        {
-            Log.Error(e);
-        }
-    }
+    // private void CheckRoom()
+    // {
+    //     try
+    //     {
+    //         foreach (var player in Player.List)
+    //         {
+    //             if (!player.IsAlive)
+    //             {
+    //                 _teamAPointedPlayers.Remove(player);
+    //                 _teamBPointedPlayers.Remove(player);
+    //                 continue;
+    //             }
+    //
+    //             if (Vector3.Distance(player.Position, room.Position) > 10f)
+    //             {
+    //                 _teamAPointedPlayers.Remove(player);
+    //                 _teamBPointedPlayers.Remove(player);
+    //                 continue;
+    //             }
+    //
+    //             if (player.CurrentRoom != room)
+    //             {
+    //                 _teamAPointedPlayers.Remove(player);
+    //                 _teamBPointedPlayers.Remove(player);
+    //                 continue;
+    //             }
+    //
+    //             if (_teamA.Contains(player))
+    //             {
+    //                 _teamAPointedPlayers.Add(player);
+    //             }
+    //
+    //             if (_teamB.Contains(player))
+    //             {
+    //                 _teamBPointedPlayers.Add(player);
+    //             }
+    //
+    //             if (_teamAPointedPlayers.Count > 0 && _teamBPointedPlayers.Count > 0)
+    //             {
+    //                 Log.Debug($"{player.Nickname} : Both teams are in the room.");
+    //                 continue;
+    //             }
+    //
+    //             if (_teamA.Contains(player) && _pointScore < 100)
+    //             {
+    //                 Log.Debug($"{player.Nickname} : Team A is in the room.");
+    //                 if (_isOccupyed == -1)
+    //                 {
+    //                     _isSteal = 1;
+    //                     _pointScore += 0.1f;
+    //                 }
+    //                 else
+    //                 {
+    //                     _pointScore += 0.1f;
+    //                     _isOccupyed = 0;
+    //                     _isSteal = 0;
+    //                 }
+    //             }
+    //             else if (_teamB.Contains(player) && _pointScore > -100)
+    //             {
+    //                 Log.Debug($"{player.Nickname} : Team B is in the room.");
+    //                 if (_isOccupyed == 1)
+    //                 {
+    //                     _isSteal = -1;
+    //                     _pointScore -= 0.1f;
+    //                 }
+    //                 else
+    //                 {
+    //                     _pointScore -= 0.1f;
+    //                     _isOccupyed = 0;
+    //                     _isSteal = 0;
+    //                 }
+    //             }
+    //         }
+    //
+    //         switch (_pointScore)
+    //         {
+    //             case > 100:
+    //                 _showCompleted = true;
+    //                 _isOccupyed = 1;
+    //                 _pointScore = 100;
+    //                 Timing.CallDelayed(3f, () =>
+    //                 {
+    //                     _showCompleted = false;
+    //                 });
+    //                 break;
+    //             case < -100:
+    //                 _showCompleted = true;
+    //                 _isOccupyed = -1;
+    //                 _pointScore = -100;
+    //                 Timing.CallDelayed(3f, () =>
+    //                 {
+    //                     _showCompleted = false;
+    //                 });
+    //                 break;
+    //         }
+    //
+    //         if (_teamAPointedPlayers.Count == 0 && _pointScore is > 0 and < 100 && _isOccupyed != -1 && _isSteal != -1)
+    //         {
+    //             _pointScore -= 0.2f;
+    //             if (_pointScore < 0)
+    //             {
+    //                 _pointScore = 0;
+    //             }
+    //         }
+    //
+    //         if (_teamBPointedPlayers.Count == 0 && _pointScore is < 0 and > -100 && _isOccupyed != 1 && _isSteal != 1)
+    //         {
+    //             _pointScore += 0.2f;
+    //             if (_pointScore > 0)
+    //             {
+    //                 _pointScore = 0;
+    //             }
+    //         }
+    //
+    //         room.Color = _pointScore switch
+    //         {
+    //             > 0 => MixColors(new Color32(132, 191, 133, 25), new Color32(239, 121, 4, 25), _pointScore / 100),
+    //             < 0 => MixColors(new Color32(132, 191, 133, 25), new Color32(7, 143, 243, 25), -_pointScore / 100),
+    //             _ => new Color32(132, 191, 133, 25)
+    //         };
+    //
+    //         if (_pointScore == 0)
+    //         {
+    //             _isOccupyed = 0;
+    //         }
+    //     }
+    //     catch (Exception e)
+    //     {
+    //         Log.Error(e);
+    //     }
+    // }
 
     private float GetDegree(Vector3 from, Vector3 to)
     {
@@ -503,6 +583,8 @@ public class EventHandler
                 pointedPlayer.ToList().ForEach(p =>
                 {
                     if (!IsPlaying(p)) return;
+
+                    if (p.GetEffect(EffectType.Invisible).IsEnabled) return;
 
                     var pinDegree = GetDegree(player.Position, p.Position);
 
@@ -579,19 +661,19 @@ public class EventHandler
                 });
             }
 
-            var roomAngle = GetDegree(player.Position, room.Position);
-
-            roomAngle -= 180;
-
-            if (roomAngle < 0)
-                roomAngle += 360;
-
-            pinAngle.Add(new Pin
-            {
-                Letter = "<size=35>🏠</size>",
-                Degree = Mathf.RoundToInt(roomAngle),
-                Color = "#FFFF00"
-            });
+            // var roomAngle = GetDegree(player.Position, room.Position);
+            //
+            // roomAngle -= 180;
+            //
+            // if (roomAngle < 0)
+            //     roomAngle += 360;
+            //
+            // pinAngle.Add(new Pin
+            // {
+            //     Letter = "<size=35>🏠</size>",
+            //     Degree = Mathf.RoundToInt(roomAngle),
+            //     Color = "#FFFF00"
+            // });
 
             for (var i = 0; i < 90; i++)
             {
@@ -662,28 +744,43 @@ public class EventHandler
     {
         var txt = new StringBuilder();
 
-        var pointText = _pointScore switch
-        {
-            > 0 =>
-                $"{MakeGradientText($"{_pointScore:F1}%", new Color32(239, 121, 4, 255), new Color32(85, 38, 0, 255))}",
-            < 0 =>
-                $"{MakeGradientText($"{-_pointScore:F1}%", new Color32(7, 143, 243, 255), new Color32(0, 46, 85, 255))}",
-            _ => "0.0%"
-        };
+        // var pointText = _pointScore switch
+        // {
+        //     > 0 =>
+        //         $"{MakeGradientText($"{_pointScore:F1}%", new Color32(239, 121, 4, 255), new Color32(85, 38, 0, 255))}",
+        //     < 0 =>
+        //         $"{MakeGradientText($"{-_pointScore:F1}%", new Color32(7, 143, 243, 255), new Color32(0, 46, 85, 255))}",
+        //     _ => "0.0%"
+        // };
+        //
+        // if (_showCompleted)
+        // {
+        //     pointText = _pointScore switch
+        //     {
+        //         >= 100 => $"<size=25>{MakeGradientText("점령되었습니다!", new Color32(239, 121, 4, 255), new Color32(85, 38, 0, 255))}</size>",
+        //         <= -100 =>
+        //             $"<size=25>{MakeGradientText("점령되었습니다!", new Color32(7, 143, 243, 255), new Color32(0, 46, 85, 255))}</size>",
+        //         _ => pointText
+        //     };
+        // }
 
-        if (_showCompleted)
+        switch (_teamAPoint - _teamBPoint)
         {
-            pointText = _pointScore switch
-            {
-                >= 100 => $"<size=25>{MakeGradientText("점령되었습니다!", new Color32(239, 121, 4, 255), new Color32(85, 38, 0, 255))}</size>",
-                <= -100 =>
-                    $"<size=25>{MakeGradientText("점령되었습니다!", new Color32(7, 143, 243, 255), new Color32(0, 46, 85, 255))}</size>",
-                _ => pointText
-            };
+            case < 0:
+                txt.Append(
+                    @$"<size=35><b><align=left>ㅤㅤTEAM A : {MakeGradientText($"{_teamAPoint:N0}pt", new Color32(239, 121, 4, 255), new Color32(85, 38, 0, 255))}<line-height=0>\n<size=52><align=center>{SecondsToTime(_timer)}<line-height=0></size>\n<align=right><size=43pt>TEAM B : {MakeGradientText($"{_teamBPoint:N0}pt", new Color32(7, 143, 243, 255), new Color32(0, 46, 85, 255))}</size>ㅤㅤ<line-height=1em></b></size>");
+                break;
+            case > 0:
+                txt.Append(
+                    @$"<size=35><b><align=left>ㅤㅤ<size=43pt>TEAM A : {MakeGradientText($"{_teamAPoint:N0}pt", new Color32(239, 121, 4, 255), new Color32(85, 38, 0, 255))}</size><line-height=0>\n<size=52><align=center>{SecondsToTime(_timer)}<line-height=0></size>\n<align=right>TEAM B : {MakeGradientText($"{_teamBPoint:N0}pt", new Color32(7, 143, 243, 255), new Color32(0, 46, 85, 255))}ㅤㅤ<line-height=1em></b></size>");
+                break;
+            default:
+                txt.Append(
+                    @$"<size=35><b><align=left>ㅤㅤTEAM A : {MakeGradientText($"{_teamAPoint:N0}pt", new Color32(239, 121, 4, 255), new Color32(85, 38, 0, 255))}<line-height=0>\n<size=52><align=center>{SecondsToTime(_timer)}<line-height=0></size>\n<align=right>TEAM B : {MakeGradientText($"{_teamBPoint:N0}pt", new Color32(7, 143, 243, 255), new Color32(0, 46, 85, 255))}ㅤㅤ<line-height=1em></b></size>");
+                break;
         }
 
-        txt.Append(
-            @$"<size=35><b><align=left>ㅤㅤㅤ점령 구역 : {pointText}<line-height=0>\n<size=45><align=center>{SecondsToTime(_timer)}<line-height=0></size>\n<align=right>점령 구역까지 {RoundToFloat(Vector3.Distance(player.Position, room.Position), 2):F2}mㅤㅤㅤ<line-height=1em></b></size>");
+        txt.Append($"</align></align></align><line-height=150%>\n{_show1853EffectMessage}");
 
         return txt.ToString();
     }
@@ -701,6 +798,47 @@ public class EventHandler
         ev.IsAllowed = false;
 
         Timing.RunCoroutine(Ping(ev.Player));
+    }
+
+    private ItemType GetRandomGun()
+    {
+        var guns = new[]
+        {
+            ItemType.GunCOM15,
+            ItemType.GunE11SR,
+            ItemType.GunCrossvec,
+            ItemType.GunFSP9,
+            ItemType.GunLogicer,
+            ItemType.GunCOM18,
+            ItemType.GunRevolver,
+            ItemType.GunAK,
+            ItemType.GunShotgun,
+            ItemType.GunCom45,
+            ItemType.GunFRMG0,
+            ItemType.GunA7
+        };
+
+        return guns[Random.Range(0, guns.Length)];
+    }
+
+    private int GetScoreForWeapon(ItemType type)
+    {
+        return type switch
+        {
+            ItemType.GunCOM15 => 40,
+            ItemType.GunE11SR => 20,
+            ItemType.GunCrossvec => 20,
+            ItemType.GunFSP9 => 30,
+            ItemType.GunLogicer => 15,
+            ItemType.GunCOM18 => 35,
+            ItemType.GunRevolver => 25,
+            ItemType.GunAK => 20,
+            ItemType.GunShotgun => 30,
+            ItemType.GunCom45 => Random.Range(0, 51),
+            ItemType.GunFRMG0 => 10,
+            ItemType.GunA7 => 30,
+            _ => 0
+        };
     }
 
     private IEnumerator<float> Ping(Player player)
@@ -730,76 +868,102 @@ public class EventHandler
 
         var layerMask = ~LayerMask.GetMask("Ignore Raycast", "Hitbox");
 
-        if (Physics.Raycast(player.CameraTransform.position + player.CameraTransform.forward * 0.2f, player.CameraTransform.forward, out var hit, 15f))
+        if (Physics.Raycast(player.CameraTransform.position + player.CameraTransform.forward * 0.2f, player.CameraTransform.forward, out var hit, 50f))
         {
             var obj = hit.collider.gameObject;
             var target = Player.Get(obj.GetComponentInParent<ReferenceHub>());
+
             if (target == player || target == null)
             {
                 if (Physics.Raycast(player.CameraTransform.position + player.CameraTransform.forward * 0.2f,
-                        player.CameraTransform.forward, out var h, 15f, layerMask))
+                        player.CameraTransform.forward, out var h, 50f, layerMask))
                 {
                     var pickup = Pickup.Get(h.transform.root.gameObject);
 
+                    if (pickup == null && Pickup.List.Any(p => Vector3.Distance(p.Position, h.point) < 2))
+                    {
+                        pickup = Pickup.List.Where(p => Vector3.Distance(p.Position, h.point) < 5).OrderBy(x => Vector3.Distance(x.Position, h.point)).First();
+                    }
+
                     if (pickup != null)
                     {
-                        if (pinPointedItems.TryGetValue(player, out var items))
+                        if (_teamA.Contains(player))
                         {
-                            if (items.Add(pickup))
+                            foreach (var p in _teamA.Where(p => p.IsAlive))
                             {
-                                SendHint($"<size=30><align=right><b>{player.CustomName}</b> - <b>{GetPickupName(pickup.Type)}</b>이(가) 있음.</align>", 5, Player.List.ToArray());
-                                Log.Debug($"{player.Nickname} pinpointed {pickup}.");
+                                if (pinPointedItems.TryGetValue(p, out var items))
+                                {
+                                    if (items.Add(pickup))
+                                    {
+                                        SendHint($"<size=30><align=right><b>{player.CustomName}</b> - <b>{GetPickupName(pickup.Type)}</b>이(가) 있음.</align>", 5, p);
+                                        Log.Debug($"{player.Nickname} pinpointed {pickup}.");
+                                    }
+                                    else
+                                    {
+                                        yield break;
+                                    }
+                                }
+                                else
+                                {
+                                    SendHint($"<size=30><align=right><b>{player.CustomName}</b> - <b>{GetPickupName(pickup.Type)}</b>이(가) 있음.</align>", 5, p);
+                                    pinPointedItems.Add(p, [pickup]);
+                                    Log.Debug($"{player.Nickname} pinpointed {pickup}.");
+                                }
                             }
-                            else
+
+
+                            Timing.RunCoroutine(PingCooldown(player));
+
+                            yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
+
+                            foreach (var p in _teamA)
                             {
-                                yield break;
+                                pinPointedItems[p].Remove(pickup);
                             }
-                        }
-                        else
+                        } else if (_teamB.Contains(player))
                         {
-                            SendHint($"<size=30><align=right><b>{player.CustomName}</b> - <b>{GetPickupName(pickup.Type)}</b>이(가) 있음.</align>", 5, Player.List.ToArray());
-                            pinPointedItems.Add(player, [pickup]);
-                            Log.Debug($"{player.Nickname} pinpointed {pickup}.");
+                            foreach (var p in _teamB.Where(p => p.IsAlive))
+                            {
+                                if (pinPointedItems.TryGetValue(p, out var items))
+                                {
+                                    if (items.Add(pickup))
+                                    {
+                                        SendHint($"<size=30><align=right><b>{player.CustomName}</b> - <b>{GetPickupName(pickup.Type)}</b>이(가) 있음.</align>", 5, p);
+                                        Log.Debug($"{player.Nickname} pinpointed {pickup}.");
+                                    }
+                                    else
+                                    {
+                                        yield break;
+                                    }
+                                }
+                                else
+                                {
+                                    SendHint($"<size=30><align=right><b>{player.CustomName}</b> - <b>{GetPickupName(pickup.Type)}</b>이(가) 있음.</align>", 5, p);
+                                    pinPointedItems.Add(p, [pickup]);
+                                    Log.Debug($"{player.Nickname} pinpointed {pickup}.");
+                                }
+                            }
+
+                            Timing.RunCoroutine(PingCooldown(player));
+
+                            yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
+
+                            foreach (var p in _teamB)
+                            {
+                                pinPointedItems[p].Remove(pickup);
+                            }
                         }
 
                         Timing.RunCoroutine(PingCooldown(player));
 
-                        yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
-
-                        pinPointedItems[player].Remove(pickup);
-
                         yield break;
                     }
 
-                    if (pinPointedPositions.TryGetValue(player, out var positions))
+                    if (_teamA.Contains(player))
                     {
-                        if (positions.Add(h.point))
+                        foreach (var aPlayer in _teamA.Where(x => x.IsAlive))
                         {
-                            foreach (var p in Player.List)
-                            {
-                                var angle = GetDegree(p.Position, h.point);
-
-                                angle -= 180;
-
-                                if (angle < 0)
-                                    angle += 360;
-
-                                angle = Mathf.RoundToInt(angle);
-
-                                SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color=#FFFFFF>{angle}°</color> 표시.</align>", 5, p);
-                            }
-                            Log.Debug($"{player.Nickname} pinpointed {h.point}.");
-                        }
-                        else
-                        {
-                            yield break;
-                        }
-                    }
-                    else
-                    {
-                        foreach (var p in Player.List)
-                        {
-                            var angle = GetDegree(p.Position, h.point);
+                            var angle = GetDegree(aPlayer.Position, h.point);
 
                             angle -= 180;
 
@@ -808,17 +972,79 @@ public class EventHandler
 
                             angle = Mathf.RoundToInt(angle);
 
-                            SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color=#FFFFFF>{angle}°</color> 표시.</align>", 5, p);
+                            SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color=#FFFFFF>{angle}°</color> 표시.</align>", 5, aPlayer);
+
+                            if (pinPointedPositions.TryGetValue(aPlayer, out var posList))
+                            {
+                                if (posList.Add(h.point))
+                                {
+                                    Log.Debug($"{player.Nickname} pinpointed {h.point}.");
+                                }
+                                else
+                                {
+                                    yield break;
+                                }
+                            }
+                            else
+                            {
+                                SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color=#FFFFFF>{angle}°</color> 표시.</align>", 5, aPlayer);
+                                pinPointedPositions.Add(aPlayer, [h.point]);
+                                Log.Debug($"{player.Nickname} pinpointed {h.point}.");
+                            }
                         }
-                        pinPointedPositions.Add(player, [h.point]);
-                        Log.Debug($"{player.Nickname} pinpointed {h.point}.");
+
+                        Timing.RunCoroutine(PingCooldown(player));
+
+                        yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
+
+                        foreach (var p in _teamA)
+                        {
+                            pinPointedPositions[p].Remove(h.point);
+                        }
                     }
+                    else if (_teamB.Contains(player))
+                    {
+                        foreach (var bPlayer in _teamB.Where(x => x.IsAlive))
+                        {
+                            var angle = GetDegree(bPlayer.Position, h.point);
 
-                    Timing.RunCoroutine(PingCooldown(player));
+                            angle -= 180;
 
-                    yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
+                            if (angle < 0)
+                                angle += 360;
 
-                    pinPointedPositions[player].Remove(h.point);
+                            angle = Mathf.RoundToInt(angle);
+
+                            SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color=#FFFFFF>{angle}°</color> 표시.</align>", 5, bPlayer);
+
+                            if (pinPointedPositions.TryGetValue(bPlayer, out var posList))
+                            {
+                                if (posList.Add(h.point))
+                                {
+                                    Log.Debug($"{player.Nickname} pinpointed {h.point}.");
+                                }
+                                else
+                                {
+                                    yield break;
+                                }
+                            }
+                            else
+                            {
+                                SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color=#FFFFFF>{angle}°</color> 표시.</align>", 5, bPlayer);
+                                pinPointedPositions.Add(bPlayer, [h.point]);
+                                Log.Debug($"{player.Nickname} pinpointed {h.point}.");
+                            }
+                        }
+
+                        Timing.RunCoroutine(PingCooldown(player));
+
+                        yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
+
+                        foreach (var p in _teamB)
+                        {
+                            pinPointedPositions[p].Remove(h.point);
+                        }
+                    }
                 }
             }
             else
@@ -842,30 +1068,72 @@ public class EventHandler
                     _ => "#FFFFFF"
                 };
 
-                if (pinPointedPlayers.TryGetValue(player, out var players))
+                if (_teamA.Contains(player))
                 {
-                    if (players.Add(target))
+                    foreach (var p in _teamA.Where(x => x.IsAlive))
                     {
-                        SendHint($"<size=30><align=right><b>{player.CustomName}</b> - <b><color={roleColor}>{target.CustomName}</color></b> 발견.</align>", 5, Player.List.ToArray());
-                        Log.Debug($"{player.Nickname} pinpointed {target.Nickname}.");
+                        if (pinPointedPlayers.TryGetValue(p, out var players))
+                        {
+                            if (players.Add(target))
+                            {
+                                SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color={roleColor}>{target.Nickname}</color> 표시.</align>", 5, p);
+                                Log.Debug($"{player.Nickname} pinpointed {target.Nickname}.");
+                            }
+                            else
+                            {
+                                yield break;
+                            }
+                        }
+                        else
+                        {
+                            SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color={roleColor}>{target.Nickname}</color> 표시.</align>", 5, p);
+                            pinPointedPlayers.Add(p, [target]);
+                            Log.Debug($"{player.Nickname} pinpointed {target.Nickname}.");
+                        }
                     }
-                    else
+
+                    Timing.RunCoroutine(PingCooldown(player));
+
+                    yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
+
+                    foreach (var p in _teamA)
                     {
-                        yield break;
+                        pinPointedPlayers[p].Remove(target);
                     }
                 }
-                else
+                else if (_teamB.Contains(player))
                 {
-                    SendHint($"<size=30><align=right><b>{player.CustomName}</b> - <b><color={roleColor}>{target.CustomName}</color></b> 발견.</align>", 5, Player.List.ToArray());
-                    pinPointedPlayers.Add(player, [target]);
-                    Log.Debug($"{player.Nickname} pinpointed {target.Nickname}.");
+                    foreach (var p in _teamB.Where(x => x.IsAlive))
+                    {
+                        if (pinPointedPlayers.TryGetValue(p, out var players))
+                        {
+                            if (players.Add(target))
+                            {
+                                SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color={roleColor}>{target.Nickname}</color> 표시.</align>", 5, p);
+                                Log.Debug($"{player.Nickname} pinpointed {target.Nickname}.");
+                            }
+                            else
+                            {
+                                yield break;
+                            }
+                        }
+                        else
+                        {
+                            SendHint($"<size=30><align=right><b>{player.Nickname}</b> - <color={roleColor}>{target.Nickname}</color> 표시.</align>", 5, p);
+                            pinPointedPlayers.Add(p, [target]);
+                            Log.Debug($"{player.Nickname} pinpointed {target.Nickname}.");
+                        }
+                    }
+
+                    Timing.RunCoroutine(PingCooldown(player));
+
+                    yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
+
+                    foreach (var p in _teamB)
+                    {
+                        pinPointedPlayers[p].Remove(target);
+                    }
                 }
-
-                Timing.RunCoroutine(PingCooldown(player));
-
-                yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
-
-                pinPointedPlayers[player].Remove(target);
             }
         }
     }
@@ -879,6 +1147,7 @@ public class EventHandler
 
     public void OnDying(DyingEventArgs ev)
     {
+        SumUpScore(ev.Player, ev.Attacker, ev.DamageHandler);
         Timing.CallDelayed(3f, () =>
         {
             if (Ragdoll.List.Count(x => x.Owner == ev.Player) != 0)
@@ -893,13 +1162,120 @@ public class EventHandler
 
     public void OnDied(DiedEventArgs ev)
     {
-        if (ev.Attacker == null) return;
+        if (ev.Attacker == null)
+        {
+            Pickup.List.Where(x => x.PreviousOwner == ev.Player).ToList().ForEach(pickup => pickup.Destroy());
+            Timing.RunCoroutine(Respawn(ev.Player, 5));
+            return;
+        }
 
         Pickup.List.Where(x => x.PreviousOwner == ev.Player).ToList().ForEach(pickup => pickup.Destroy());
         if (!ev.Attacker.HasItem(ItemType.Medkit))
             ev.Attacker.AddItem(ItemType.Medkit);
+
+        ev.Attacker.RemoveHeldItem(true);
+        ev.Attacker.AddItem(GetRandomGun());
+
+        ev.Attacker.AddAmmo(AmmoType.Ammo44Cal, 20);
+        ev.Attacker.AddAmmo(AmmoType.Nato556, 60);
+        ev.Attacker.AddAmmo(AmmoType.Nato762, 60);
+        ev.Attacker.AddAmmo(AmmoType.Nato9, 120);
+        ev.Attacker.SetAmmo(AmmoType.Ammo12Gauge, 54);
+
         ev.Attacker.AddAhp(20, 75, 0, 1, 0, false);
         Timing.RunCoroutine(Respawn(ev.Player, 5));
+    }
+
+    private string GetGunName(ItemType type)
+    {
+        return type switch {
+            ItemType.GunCOM15 => "COM-15",
+            ItemType.GunE11SR => "E-11 SR",
+            ItemType.GunCrossvec => "Crossvec",
+            ItemType.GunFSP9 => "FSP-9",
+            ItemType.GunLogicer => "Logicer",
+            ItemType.GunCOM18 => "COM-18",
+            ItemType.GunRevolver => "Revolver",
+            ItemType.GunAK => "AK-47",
+            ItemType.GunShotgun => "Shotgun",
+            ItemType.GunCom45 => "Com-45",
+            ItemType.GunFRMG0 => "FRMG-0",
+            ItemType.GunA7 => "A-7",
+            _ => "Unknown"
+        };
+    }
+
+    private void SumUpScore(Player victim, Player attacker, DamageHandler damageHandler)
+    {
+        if (victim == null || attacker == null) return;
+
+        if (_teamA.Contains(attacker))
+        {
+            _teamAPoint += 50;
+            SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 처치! +50pt</b></align>", 5, attacker);
+
+            _teamAPoint += GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType);
+            SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - {GetGunName(damageHandler.As<FirearmDamageHandler>().WeaponType)}로 처치! +{GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType)}pt</b></align>", 5, attacker);
+
+            if (damageHandler.As<StandardDamageHandler>().Hitbox == HitboxType.Headshot)
+            {
+                _teamAPoint += 50;
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 헤드샷! +50pt</b></align>", 5, attacker);
+            }
+
+            if (Vector3.Distance(victim.Position, attacker.Position) >= 15f)
+            {
+                _teamAPoint += 20;
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 원거리 처치! +20pt</b></align>", 5, attacker);
+            }
+            else if (Vector3.Distance(victim.Position, attacker.Position) >= 10f)
+            {
+                _teamAPoint += 10;
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 중거리 처치! +10pt</b></align>", 5, attacker);
+            }
+
+            if (attacker.Health < 20)
+            {
+                _teamAPoint += 20;
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 아슬아슬! +20pt</b></align>", 5, attacker);
+            }
+        }
+        else if (_teamB.Contains(attacker))
+        {
+            _teamBPoint += 50;
+            SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 처치! +50pt</b></align>", 5,
+                attacker);
+
+            _teamBPoint += GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType);
+            SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - {GetGunName(damageHandler.As<FirearmDamageHandler>().WeaponType)}로 처치! +{GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType)}pt</b></align>", 5, attacker);
+
+            if (damageHandler.As<StandardDamageHandler>().Hitbox == HitboxType.Headshot)
+            {
+                _teamBPoint += 50;
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 헤드샷! +50pt</b></align>", 5,
+                    attacker);
+            }
+
+            if (Vector3.Distance(victim.Position, attacker.Position) >= 15f)
+            {
+                _teamBPoint += 20;
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 원거리 처치! +20pt</b></align>", 5,
+                    attacker);
+            }
+            else if (Vector3.Distance(victim.Position, attacker.Position) >= 10f)
+            {
+                _teamBPoint += 10;
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 중거리 처치! +10pt</b></align>", 5,
+                    attacker);
+            }
+
+            if (attacker.Health < 20)
+            {
+                _teamBPoint += 20;
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 아슬아슬! +20pt</b></align>", 5,
+                    attacker);
+            }
+        }
     }
 
     private IEnumerator<float> Respawn(Player player, ushort time)
@@ -911,8 +1287,10 @@ public class EventHandler
             yield return Timing.WaitForSeconds(1f);
         }
 
+        if (_roundEnded) yield break;
+
         var spawnableRooms = Room.List.Where(x =>
-            _playerSpawnRooms[ZoneType.LightContainment].Contains(x.Type) && x != room).ToList();
+            _playerSpawnRooms[ZoneType.Entrance].Contains(x.Type) && !x.Players.Any()).ToList();
 
         if (_teamA.Contains(player))
         {
@@ -926,12 +1304,22 @@ public class EventHandler
         spawnableRooms.ShuffleList();
         player.Position = spawnableRooms.First().Position + new Vector3(0, 1, 0);
 
-        player.AddItem(ItemType.GunE11SR);
+        player.AddItem(GetRandomGun());
+        player.AddItem(GetRandomGun());
         player.AddItem(ItemType.KeycardO5);
         player.AddItem(ItemType.Medkit);
         player.AddItem(ItemType.ArmorCombat);
         player.AddItem(ItemType.Radio);
-        player.AddAmmo(AmmoType.Nato556, 5000);
+        player.AddAmmo(AmmoType.Ammo44Cal, 120);
+        player.AddAmmo(AmmoType.Nato556, 120);
+        player.AddAmmo(AmmoType.Nato762, 120);
+        player.AddAmmo(AmmoType.Nato9, 120);
+        player.SetAmmo(AmmoType.Ammo12Gauge, 54);
+
+        // Log.Info(_1853EffectCount);
+
+        if (_1853EffectCount != 0)
+            player.SyncEffect(new Effect(EffectType.Scp1853, 0, _1853EffectCount, false, true));
 
         player.IsGodModeEnabled = true;
         yield return Timing.WaitForSeconds(2f);
@@ -959,9 +1347,43 @@ public class EventHandler
 
     public void OnChangingRole(ChangingRoleEventArgs ev)
     {
+        ev.Player.ClearInventory();
+        ev.Player.ClearAmmo();
         Timing.CallDelayed(0.1f, () =>
         {
             Pickup.List.Where(x => x.PreviousOwner == ev.Player).ToList().ForEach(x => x.Destroy());
         });
+    }
+
+    public void OnRespawningTeam(RespawningTeamEventArgs ev)
+    {
+        ev.IsAllowed = false;
+    }
+
+    public void OnUsingRadioBattery(UsingRadioBatteryEventArgs ev)
+    {
+        ev.Drain = 0;
+    }
+
+    public void OnPlayerLeft(LeftEventArgs ev)
+    {
+        if (pinPointedPlayers.ContainsKey(ev.Player))
+            pinPointedPlayers.Remove(ev.Player);
+
+        if (pinPointedItems.ContainsKey(ev.Player))
+            pinPointedItems.Remove(ev.Player);
+
+        if (pinPointedPositions.ContainsKey(ev.Player))
+            pinPointedPositions.Remove(ev.Player);
+
+        if (_teamA.Contains(ev.Player))
+        {
+            _teamA.Remove(ev.Player);
+        }
+
+        if (_teamB.Contains(ev.Player))
+        {
+            _teamB.Remove(ev.Player);
+        }
     }
 }

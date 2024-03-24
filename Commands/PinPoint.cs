@@ -13,6 +13,12 @@ public class PinPoint : ICommand
     {
         var senderPlayer = Player.Get((CommandSender)sender);
 
+        if (senderPlayer is null)
+        {
+            response = "You must be a player to use this command.";
+            return false;
+        }
+
         if (arguments.Count < 1)
         {
             response = "Usage: pinpoint <player>";
