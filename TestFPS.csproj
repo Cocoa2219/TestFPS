@@ -429,7 +429,9 @@
         </Reference>
     </ItemGroup>
     <ItemGroup>
+        <Compile Include="Commands\FixCamera.cs" />
         <Compile Include="Commands\PinPoint.cs" />
+        <Compile Include="Commands\ShowHint.cs" />
         <Compile Include="Config.cs" />
         <Compile Include="EventHandler.cs" />
         <Compile Include="MultiHint.cs" />

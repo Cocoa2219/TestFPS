@@ -40,6 +40,7 @@ namespace TestFPS
             Player.UsingRadioBattery += _eventHandler.OnUsingRadioBattery;
             Player.ChangingRole += _eventHandler.OnChangingRole;
             Player.Left += _eventHandler.OnPlayerLeft;
+            Player.Verified += _eventHandler.OnPlayerVerified;
         }
 
         public override void OnDisabled()
@@ -65,6 +66,7 @@ namespace TestFPS
             Player.UsingRadioBattery -= _eventHandler.OnUsingRadioBattery;
             Player.ChangingRole -= _eventHandler.OnChangingRole;
             Player.Left -= _eventHandler.OnPlayerLeft;
+            Player.Verified -= _eventHandler.OnPlayerVerified;
         }
     }
 }
