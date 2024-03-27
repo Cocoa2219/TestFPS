@@ -13,6 +13,7 @@ using MEC;
 using PlayerRoles;
 using PlayerStatsSystem;
 using UnityEngine;
+using Utils.NonAllocLINQ;
 using Exception = System.Exception;
 using FirearmDamageHandler = PlayerStatsSystem.FirearmDamageHandler;
 using Random = UnityEngine.Random;
@@ -77,6 +78,8 @@ public class EventHandler
 
     private Dictionary<Player, int> _playerPointsDict = [];
     private List<KeyValuePair<Player, int>> _playerPointsList = [];
+
+    private Dictionary<Player, HashSet<Player>> _assistList = new();
 
 
     private int _timer;
@@ -194,11 +197,24 @@ public class EventHandler
         var spawnableRooms = Room.List.Where(x =>
             _playerSpawnRooms[ZoneType.Entrance].Contains(x.Type)).ToList();
 
+        Log.Debug(spawnableRooms.Count);
+
         foreach (var aPlayer in _teamA)
         {
             aPlayer.Role.Set(RoleTypeId.ClassD, SpawnReason.Respawn, RoleSpawnFlags.None);
             spawnableRooms.ShuffleList();
-            aPlayer.Position = spawnableRooms.First().Position + new Vector3(0, 1, 0);
+            var selRoom = spawnableRooms.Count > 0 ? spawnableRooms.First() : null;
+
+            if (selRoom is null)
+            {
+                spawnableRooms = Room.List.Where(x =>
+                    _playerSpawnRooms[ZoneType.Entrance].Contains(x.Type)).ToList();
+                spawnableRooms.ShuffleList();
+                selRoom = spawnableRooms.First();
+            }
+
+            aPlayer.Position = selRoom.Position + new Vector3(0, 1, 0);
+            spawnableRooms.Remove(selRoom);
             aPlayer.Broadcast(3, "<size=35><b>시작!</b></size>", Broadcast.BroadcastFlags.Normal, true);
         }
 
@@ -206,14 +222,42 @@ public class EventHandler
         {
             bPlayer.Role.Set(RoleTypeId.NtfSergeant, SpawnReason.Respawn, RoleSpawnFlags.None);
             spawnableRooms.ShuffleList();
-            bPlayer.Position = spawnableRooms.First().Position + new Vector3(0, 1, 0);
+            var selRoom = spawnableRooms.Count > 0 ? spawnableRooms.First() : null;
+
+            if (selRoom is null)
+            {
+                spawnableRooms = Room.List.Where(x =>
+                    _playerSpawnRooms[ZoneType.Entrance].Contains(x.Type)).ToList();
+                spawnableRooms.ShuffleList();
+                selRoom = spawnableRooms.First();
+            }
+
+            bPlayer.Position = selRoom.Position + new Vector3(0, 1, 0);
+            spawnableRooms.Remove(selRoom);
             bPlayer.Broadcast(3, "<size=35><b>시작!</b></size>", Broadcast.BroadcastFlags.Normal, true);
         }
 
         foreach (var player in Player.List)
         {
-            player.AddItem(GetRandomGun());
-            player.AddItem(GetRandomGun());
+            var randomWeaponType = Random.Range(0, 3);
+
+
+            player.AddItem(GetRandomGun(WeaponType.Pistol));
+            switch (randomWeaponType)
+            {
+                case 0:
+                    player.AddItem(GetRandomGun(WeaponType.Rifle));
+                    break;
+                case 1:
+                    player.AddItem(GetRandomGun(WeaponType.SMG));
+                    break;
+                case 2:
+                    player.AddItem(GetRandomGun(WeaponType.Shotgun));
+                    break;
+                default:
+                    player.AddItem(GetRandomGun(WeaponType.Rifle));
+                    break;
+            }
             player.AddItem(ItemType.KeycardO5);
             player.AddItem(ItemType.Medkit);
             player.AddItem(ItemType.ArmorCombat);
@@ -835,8 +879,10 @@ public class EventHandler
             _ => "#ffffff"
         };
 
+        // player.Vaporize();
+
         txt.Append(
-            $"\n<size=35pt><align=left><color={rankColor}><b>ㅤㅤ</b>🏆 <b>#{rankIndex}</color><line-height=0>\n<align=right>{_playerPointsDict[player]}ptㅤㅤ</b></size>");
+            $"\n<size=35pt><align=left><color={rankColor}><b>ㅤㅤ</b>🏆<b> #{rankIndex}</color><line-height=0>\n<align=right><size=40><{_playerPointsDict[player]:N0}pt</size>ㅤㅤ</b></size>");
 
         // txt.Append($"</align></align></align></align></align><line-height=150%>\n{_show1853EffectMessage}");
 
@@ -877,6 +923,33 @@ public class EventHandler
         };
 
         return guns[Random.Range(0, guns.Length)];
+    }
+
+    private ItemType GetRandomGun(WeaponType type)
+    {
+        switch (type)
+        {
+            case WeaponType.Pistol:
+                return Random.Range(0, 4) switch { 0 => ItemType.GunCOM15, 1 => ItemType.GunCOM18, 2 => ItemType.GunRevolver, 3 => ItemType.GunCom45, _ => ItemType.GunCOM15 };
+            case WeaponType.SMG:
+                return Random.Range(0, 2) == 0 ? ItemType.GunCrossvec : ItemType.GunFSP9;
+            case WeaponType.Shotgun:
+                return ItemType.GunShotgun;
+            case WeaponType.Rifle:
+                return Random.Range(0, 5) switch
+                {
+                    0 => ItemType.GunLogicer,
+                    1 => ItemType.GunE11SR,
+                    2 => ItemType.GunFRMG0,
+                    3 => ItemType.GunAK,
+                    4 => ItemType.GunA7,
+                    _ => ItemType.GunLogicer
+                };
+            case WeaponType.Unknown:
+                return ItemType.None;
+            default:
+                return ItemType.None;
+        }
     }
 
     private int GetScoreForWeapon(ItemType type)
@@ -1231,8 +1304,23 @@ public class EventHandler
         if (!ev.Attacker.HasItem(ItemType.Medkit))
             ev.Attacker.AddItem(ItemType.Medkit);
 
-        ev.Attacker.RemoveHeldItem(true);
-        ev.Attacker.AddItem(GetRandomGun());
+        var weaponType = GetTypeOfWeapon(ev.DamageHandler.As<FirearmDamageHandler>().WeaponType);
+
+        ev.Attacker.RemoveHeldItem();
+        if (weaponType == WeaponType.Pistol)
+            ev.Attacker.AddItem(GetRandomGun(WeaponType.Pistol));
+        else
+        {
+            var randomType = Random.Range(0, 3) switch
+            {
+                0 => WeaponType.Rifle,
+                1 => WeaponType.SMG,
+                2 => WeaponType.Shotgun,
+                _ => WeaponType.Rifle
+            };
+
+            ev.Attacker.AddItem(GetRandomGun(randomType));
+        }
 
         ev.Attacker.AddAmmo(AmmoType.Ammo44Cal, 20);
         ev.Attacker.AddAmmo(AmmoType.Nato556, 60);
@@ -1248,7 +1336,7 @@ public class EventHandler
     {
         return type switch {
             ItemType.GunCOM15 => "COM-15",
-            ItemType.GunE11SR => "E-11 SR",
+            ItemType.GunE11SR => "E-11-SR",
             ItemType.GunCrossvec => "Crossvec",
             ItemType.GunFSP9 => "FSP-9",
             ItemType.GunLogicer => "Logicer",
@@ -1257,9 +1345,28 @@ public class EventHandler
             ItemType.GunAK => "AK-47",
             ItemType.GunShotgun => "Shotgun",
             ItemType.GunCom45 => "Com-45",
-            ItemType.GunFRMG0 => "FRMG-0",
+            ItemType.GunFRMG0 => "FR-MG-0",
             ItemType.GunA7 => "A-7",
             _ => "Unknown"
+        };
+    }
+
+    private WeaponType GetTypeOfWeapon(ItemType type)
+    {
+        return type switch {
+            ItemType.GunCOM15 => WeaponType.Pistol,
+            ItemType.GunE11SR => WeaponType.Rifle,
+            ItemType.GunCrossvec => WeaponType.SMG,
+            ItemType.GunFSP9 => WeaponType.SMG,
+            ItemType.GunLogicer => WeaponType.Rifle,
+            ItemType.GunCOM18 => WeaponType.Pistol,
+            ItemType.GunRevolver => WeaponType.Pistol,
+            ItemType.GunAK => WeaponType.Rifle,
+            ItemType.GunShotgun => WeaponType.Shotgun,
+            ItemType.GunCom45 => WeaponType.Pistol,
+            ItemType.GunFRMG0 => WeaponType.Rifle,
+            ItemType.GunA7 => WeaponType.Rifle,
+            _ => WeaponType.Unknown
         };
     }
 
@@ -1304,6 +1411,16 @@ public class EventHandler
                 _playerPointsDict[attacker] += 20;
                 SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 아슬아슬! +20pt</b></align>", 5, attacker);
             }
+
+            _assistList[victim].Where(x => x != attacker).ToList().ForEach(x =>
+            {
+                _teamAPoint += 25;
+                _playerPointsDict[x] += 25;
+
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 어시스트! +25pt</b></align>", 5, x);
+            });
+
+            _assistList[victim].Clear();
         }
         else if (_teamB.Contains(attacker))
         {
@@ -1347,6 +1464,14 @@ public class EventHandler
                 SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 아슬아슬! +20pt</b></align>", 5,
                     attacker);
             }
+
+            _assistList[victim].Where(x => x != attacker).ToList().ForEach(x =>
+            {
+                _teamBPoint += 25;
+                _playerPointsDict[x] += 25;
+
+                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 어시스트! +25pt</b></align>", 5, x);
+            });
         }
     }
 
@@ -1378,8 +1503,15 @@ public class EventHandler
 
         if (IsPlaying(player))
         {
-            player.AddItem(GetRandomGun());
-            player.AddItem(GetRandomGun());
+            var randomWeaponType = Random.Range(0, 3) switch
+            {
+                0 => WeaponType.SMG,
+                1 => WeaponType.Rifle,
+                2 => WeaponType.Shotgun,
+                _ => WeaponType.Rifle
+            };
+            player.AddItem(GetRandomGun(WeaponType.Pistol));
+            player.AddItem(GetRandomGun(randomWeaponType));
             player.AddItem(ItemType.KeycardO5);
             player.AddItem(ItemType.Medkit);
             player.AddItem(ItemType.ArmorCombat);
@@ -1468,5 +1600,30 @@ public class EventHandler
     public void OnPlayerVerified(VerifiedEventArgs ev)
     {
         _playerPointsDict.Add(ev.Player, 0);
+    }
+
+    public void OnPlayerHurt(HurtEventArgs ev)
+    {
+        if (ev.Attacker == null) return;
+
+        Timing.RunCoroutine(Assist(ev.Player, ev.Attacker));
+    }
+
+    private IEnumerator<float> Assist(Player victim, Player attacker)
+    {
+        Log.Debug($"{victim.Nickname} : {attacker.Nickname} (AssistList.Add)");
+
+        _assistList.TryAdd(victim, []);
+
+        _assistList[victim].Add(attacker);
+        yield return Timing.WaitForSeconds(3f);
+        _assistList[victim].Remove(attacker);
+
+        Log.Debug($"{victim.Nickname} : {attacker.Nickname} (AssistList.Remove)");
+    }
+
+    public void OnHandcuffing(HandcuffingEventArgs ev)
+    {
+        ev.IsAllowed = false;
     }
 }

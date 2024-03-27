@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using CommandSystem;
 using Exiled.API.Features;
+using UnityEngine;
 
 namespace TestFPS.Commands;
 
@@ -17,6 +19,10 @@ public class FixCamera : ICommand
             response = "You must be a player to use this command.";
             return false;
         }
+
+        var nearestPlayer = Player.List.OrderBy(player => Vector3.Distance(player.Position, senderPlayer.Position)).FirstOrDefault();
+
+        if (nearestPlayer != null) senderPlayer.CameraTransform.LookAt(nearestPlayer.Position);
 
         response = "Camera fixed.";
         return true;

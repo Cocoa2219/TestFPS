@@ -41,6 +41,8 @@ namespace TestFPS
             Player.ChangingRole += _eventHandler.OnChangingRole;
             Player.Left += _eventHandler.OnPlayerLeft;
             Player.Verified += _eventHandler.OnPlayerVerified;
+            Player.Hurt += _eventHandler.OnPlayerHurt;
+            Player.Handcuffing += _eventHandler.OnHandcuffing;
         }
 
         public override void OnDisabled()
@@ -67,6 +69,8 @@ namespace TestFPS
             Player.ChangingRole -= _eventHandler.OnChangingRole;
             Player.Left -= _eventHandler.OnPlayerLeft;
             Player.Verified -= _eventHandler.OnPlayerVerified;
+            Player.Hurt += _eventHandler.OnPlayerHurt;
+            Player.Handcuffing += _eventHandler.OnHandcuffing;
         }
     }
 }
