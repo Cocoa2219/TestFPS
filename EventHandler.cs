@@ -81,6 +81,8 @@ public class EventHandler
 
     private Dictionary<Player, HashSet<Player>> _assistList = new();
 
+    private List<CoroutineHandle> _coroutines = new();
+
 
     private int _timer;
 
@@ -269,8 +271,8 @@ public class EventHandler
             player.SetAmmo(AmmoType.Ammo12Gauge, 54);
         }
 
-        Timing.RunCoroutine(BroadcastGameStat());
-        Timing.RunCoroutine(Timer(_timer));
+        _coroutines.Add(Timing.RunCoroutine(BroadcastGameStat()));
+        _coroutines.Add(Timing.RunCoroutine(Timer(_timer)));
         Player.List.ToList().ForEach(x => x.IsGodModeEnabled = true);
         yield return Timing.WaitForSeconds(2f);
         Player.List.ToList().ForEach(x => x.IsGodModeEnabled = false);
@@ -282,7 +284,7 @@ public class EventHandler
     {
         players.ToList().ForEach(player =>
         {
-            Timing.RunCoroutine(MultiHint.AddPlayerHint(player.UserId, duration, text));
+            _coroutines.Add(Timing.RunCoroutine(MultiHint.AddPlayerHint(player.UserId, duration, text)));
         });
     }
 
@@ -353,7 +355,7 @@ public class EventHandler
 
     public void OnRoundStarted()
     {
-        Timing.RunCoroutine(StartGame());
+        _coroutines.Add(Timing.RunCoroutine(StartGame()));
     }
 
     private IEnumerator<float> Timer(int time)
@@ -882,7 +884,7 @@ public class EventHandler
         // player.Vaporize();
 
         txt.Append(
-            $"\n<size=35pt><align=left><color={rankColor}><b>ㅤㅤ</b>🏆<b> #{rankIndex}</color><line-height=0>\n<align=right><size=40><{_playerPointsDict[player]:N0}pt</size>ㅤㅤ</b></size>");
+            $"\n<size=35pt><align=left><color={rankColor}><b>ㅤㅤ</b>🏆<b> #{rankIndex}</color> - <size=35pt>{_playerPointsDict[player]:N0}pt</size></b></size>");
 
         // txt.Append($"</align></align></align></align></align><line-height=150%>\n{_show1853EffectMessage}");
 
@@ -892,6 +894,44 @@ public class EventHandler
     public void OnServerRestarting()
     {
         pinPointedPlayers.Clear();
+        pinPointedItems.Clear();
+        pinPointedPositions.Clear();
+
+        _teamA.Clear();
+        _teamB.Clear();
+
+        _teamAPoint = 0;
+        _teamBPoint = 0;
+
+        _playerPointsDict.Clear();
+        _playerPointsList.Clear();
+
+        _roundEnded = false;
+
+        _coroutines.ForEach(x =>
+        {
+            if (x is { IsRunning: true, IsValid: true })
+                Timing.KillCoroutines(x);
+        });
+
+        _coroutines.Clear();
+
+        _pointScore = 0;
+        _isOccupyed = 0;
+        _isSteal = 0;
+
+        _showCompleted = false;
+
+        _1853EffectCount = 0;
+
+        _show1853EffectMessage = string.Empty;
+
+        _timer = 0;
+
+        _teamAPointedPlayers.Clear();
+        _teamBPointedPlayers.Clear();
+
+        _assistList.Clear();
     }
 
     public void OnChangingItem(ChangingItemEventArgs ev)
@@ -901,7 +941,7 @@ public class EventHandler
 
         ev.IsAllowed = false;
 
-        Timing.RunCoroutine(Ping(ev.Player));
+        _coroutines.Add(Timing.RunCoroutine(Ping(ev.Player)));
     }
 
     private ItemType GetRandomGun()
@@ -1043,7 +1083,7 @@ public class EventHandler
                             }
 
 
-                            Timing.RunCoroutine(PingCooldown(player));
+                            _coroutines.Add(Timing.RunCoroutine(PingCooldown(player)));
 
                             yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
 
@@ -1075,7 +1115,7 @@ public class EventHandler
                                 }
                             }
 
-                            Timing.RunCoroutine(PingCooldown(player));
+                            _coroutines.Add(Timing.RunCoroutine(PingCooldown(player)));
 
                             yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
 
@@ -1085,7 +1125,7 @@ public class EventHandler
                             }
                         }
 
-                        Timing.RunCoroutine(PingCooldown(player));
+                        _coroutines.Add(Timing.RunCoroutine(PingCooldown(player)));
 
                         yield break;
                     }
@@ -1124,7 +1164,7 @@ public class EventHandler
                             }
                         }
 
-                        Timing.RunCoroutine(PingCooldown(player));
+                        _coroutines.Add(Timing.RunCoroutine(PingCooldown(player)));
 
                         yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
 
@@ -1167,7 +1207,7 @@ public class EventHandler
                             }
                         }
 
-                        Timing.RunCoroutine(PingCooldown(player));
+                        _coroutines.Add(Timing.RunCoroutine(PingCooldown(player)));
 
                         yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
 
@@ -1223,7 +1263,7 @@ public class EventHandler
                         }
                     }
 
-                    Timing.RunCoroutine(PingCooldown(player));
+                    _coroutines.Add(Timing.RunCoroutine(PingCooldown(player)));
 
                     yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
 
@@ -1256,7 +1296,7 @@ public class EventHandler
                         }
                     }
 
-                    Timing.RunCoroutine(PingCooldown(player));
+                    _coroutines.Add(Timing.RunCoroutine(PingCooldown(player)));
 
                     yield return Timing.WaitForSeconds(TestFPS.Instance.Config.PingDuration);
 
@@ -1296,7 +1336,7 @@ public class EventHandler
         if (ev.Attacker == null)
         {
             Pickup.List.Where(x => x.PreviousOwner == ev.Player).ToList().ForEach(pickup => pickup.Destroy());
-            Timing.RunCoroutine(Respawn(ev.Player, 5));
+            _coroutines.Add(Timing.RunCoroutine(Respawn(ev.Player, 5)));
             return;
         }
 
@@ -1329,7 +1369,7 @@ public class EventHandler
         ev.Attacker.SetAmmo(AmmoType.Ammo12Gauge, 54);
 
         ev.Attacker.AddAhp(10, 75, 0, 1, 0, false);
-        Timing.RunCoroutine(Respawn(ev.Player, 5));
+        _coroutines.Add(Timing.RunCoroutine(Respawn(ev.Player, 5)));
     }
 
     private string GetGunName(ItemType type)
@@ -1378,38 +1418,38 @@ public class EventHandler
         {
             _teamAPoint += 50;
             _playerPointsDict[attacker] += 50;
-            SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 처치! +50pt</b></align>", 5, attacker);
+            SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 처치! <color=#f7cb39>+50pt</color></b></align>", 5, attacker);
 
-            var score =  GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType);
+            var score = GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType);
             _teamAPoint += score;
             _playerPointsDict[attacker] += score;
-            SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - {GetGunName(damageHandler.As<FirearmDamageHandler>().WeaponType)}로 처치! +{GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType)}pt</b></align>", 5, attacker);
+            SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - {GetGunName(damageHandler.As<FirearmDamageHandler>().WeaponType)}로 처치! <color=#f7cb39>+{GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType)}pt</color></b></align>", 5, attacker);
 
             if (damageHandler.As<StandardDamageHandler>().Hitbox == HitboxType.Headshot)
             {
                 _teamAPoint += 50;
                 _playerPointsDict[attacker] += 50;
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 헤드샷! +50pt</b></align>", 5, attacker);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 헤드샷! <color=#f7cb39>+50pt</color></b></align>", 5, attacker);
             }
 
             if (Vector3.Distance(victim.Position, attacker.Position) >= 15f)
             {
                 _teamAPoint += 20;
                 _playerPointsDict[attacker] += 20;
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 원거리 처치! +20pt</b></align>", 5, attacker);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 원거리 처치! <color=#f7cb39>+20pt</color></b></align>", 5, attacker);
             }
             else if (Vector3.Distance(victim.Position, attacker.Position) >= 10f)
             {
                 _teamAPoint += 10;
                 _playerPointsDict[attacker] += 10;
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 중거리 처치! +10pt</b></align>", 5, attacker);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 중거리 처치! <color=#f7cb39>+10pt</color></b></align>", 5, attacker);
             }
 
             if (attacker.Health < 20)
             {
                 _teamAPoint += 20;
                 _playerPointsDict[attacker] += 20;
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 아슬아슬! +20pt</b></align>", 5, attacker);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 아슬아슬! <color=#f7cb39>+20pt</color></b></align>", 5, attacker);
             }
 
             _assistList[victim].Where(x => x != attacker).ToList().ForEach(x =>
@@ -1417,7 +1457,7 @@ public class EventHandler
                 _teamAPoint += 25;
                 _playerPointsDict[x] += 25;
 
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 어시스트! +25pt</b></align>", 5, x);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 어시스트! <color=#f7cb39>+25pt</color></b></align>", 5, x);
             });
 
             _assistList[victim].Clear();
@@ -1426,43 +1466,38 @@ public class EventHandler
         {
             _teamBPoint += 50;
             _playerPointsDict[attacker] += 50;
-            SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 처치! +50pt</b></align>", 5,
-                attacker);
+            SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 처치! <color=#f7cb39>+50pt</color></b></align>", 5, attacker);
 
             var score = GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType);
             _teamBPoint += score;
             _playerPointsDict[attacker] += score;
-            SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - {GetGunName(damageHandler.As<FirearmDamageHandler>().WeaponType)}로 처치! +{GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType)}pt</b></align>", 5, attacker);
+            SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - {GetGunName(damageHandler.As<FirearmDamageHandler>().WeaponType)}로 처치! <color=#f7cb39>+{GetScoreForWeapon(damageHandler.As<FirearmDamageHandler>().WeaponType)}pt</color></b></align>", 5, attacker);
 
             if (damageHandler.As<StandardDamageHandler>().Hitbox == HitboxType.Headshot)
             {
                 _teamBPoint += 50;
                 _playerPointsDict[attacker] += 50;
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 헤드샷! +50pt</b></align>", 5,
-                    attacker);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 헤드샷! <color=#f7cb39>+50pt</color></b></align>", 5, attacker);
             }
 
             if (Vector3.Distance(victim.Position, attacker.Position) >= 15f)
             {
                 _teamBPoint += 20;
                 _playerPointsDict[attacker] += 20;
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 원거리 처치! +20pt</b></align>", 5,
-                    attacker);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 원거리 처치! <color=#f7cb39>+20pt</color></b></align>", 5, attacker);
             }
             else if (Vector3.Distance(victim.Position, attacker.Position) >= 10f)
             {
                 _teamBPoint += 10;
                 _playerPointsDict[attacker] += 10;
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 중거리 처치! +10pt</b></align>", 5,
-                    attacker);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 중거리 처치! <color=#f7cb39>+10pt</color></b></align>", 5, attacker);
             }
 
             if (attacker.Health < 20)
             {
                 _teamBPoint += 20;
                 _playerPointsDict[attacker] += 20;
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 아슬아슬! +20pt</b></align>", 5,
-                    attacker);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 아슬아슬! <color=#f7cb39>+20pt</color></b></align>", 5, attacker);
             }
 
             _assistList[victim].Where(x => x != attacker).ToList().ForEach(x =>
@@ -1470,7 +1505,7 @@ public class EventHandler
                 _teamBPoint += 25;
                 _playerPointsDict[x] += 25;
 
-                SendHint($"<size=30><align=right><color=#FF0000><b>{victim.Nickname}</color> - 어시스트! +25pt</b></align>", 5, x);
+                SendHint($"<size=25><align=right><color=#FF0000><b>{victim.Nickname}</color> - 어시스트! <color=#f7cb39>+25pt</color></b></align>", 5, x);
             });
         }
     }
@@ -1606,7 +1641,7 @@ public class EventHandler
     {
         if (ev.Attacker == null) return;
 
-        Timing.RunCoroutine(Assist(ev.Player, ev.Attacker));
+        _coroutines.Add(Timing.RunCoroutine(Assist(ev.Player, ev.Attacker)));
     }
 
     private IEnumerator<float> Assist(Player victim, Player attacker)
